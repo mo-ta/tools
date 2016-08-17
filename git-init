@@ -1,0 +1,13 @@
+#!/usr/bin/env zsh
+git init
+git config --global user.name motoki
+git config --global user.email "username@example.com"
+#色付け
+git config --global color.diff auto
+git config --global color.status auto
+git config --global color.branch auto
+#push 方式を指定
+git config --global push.default simple
+#エディタを Vim に設定する
+git config --global core.editor 'vim -c "set fenc=utf"'
+touch README.md
