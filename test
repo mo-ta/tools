@@ -1,0 +1,438 @@
+    "require 'matrix'\n",
+    "include Math\n",
+    "#角度は　入出力:deg  内部:ラジアン\n",
+    "\n",
+    "#ロールピッチヨー=>回転行列 変換\n",
+    "def rpy2rmat (r,p,y)\n",
+    "  sa = sin(r * PI / 180.0)\n",
+    "  ca = cos(r * PI / 180.0)\n",
+    "  sb = sin(p * PI / 180.0)\n",
+    "  cb = cos(p * PI / 180.0)\n",
+    "  sc = sin(y * PI / 180.0)\n",
+    "  cc = cos(y * PI / 180.0)\n",
+    "  Matrix[[ ca*cb,            sa*cb,            -sb    ],\n",
+    "         [-sa*cc + sb*sc*ca, sa*sb*sc + ca*cc, sc*cb ],\n",
+    "         [ sa*sc + sb*ca*cc, sa*sb*cc - sc*ca, cb*cc ]]\n",
+    "end\n",
+    "\n",
+    "#オイラー角 => 回転行列 変換\n",
+    "def euler2rmat (a,b,c)\n",
+    "  sa = sin(a * PI / 180.0)\n",
+    "  ca = cos(a * PI / 180.0)\n",
+    "  sb = sin(b * PI / 180.0)\n",
+    "  cb = cos(b * PI / 180.0)\n",
+    "  sc = sin(c * PI / 180.0)\n",
+    "  cc = cos(c * PI / 180.0)\n",
+    "  Matrix[[-sa*sc + ca*cb*cc,  sa*cb*cc + sc*ca, -sb*cc],\n",
+    "         [-sa*cc - sc*ca*cb, -sa*sc*cb + ca*cc,  sb*sc],\n",
+    "         [ sb*ca,              sa*sb,             cb   ]]\n",
+    "end\n",
+    "\n",
+    "#回転行列 => ロールピッチヨー 変換\n",
+    "def rmat2rpy m\n",
+    "   cp = (m[0,0]**2 + m[0,1]**2)**0.5\n",
+    "   sp = -m[0,2]\n",
+    "\n",
+    "   if  cp < 0.00001 # 縮退状態\n",
+    "     r = 0.0  # 基準角を0に固定\n",
+    "     if   sp < 0.0\n",
+    "           p = -PI / 2.0\n",
+    "           y = atan2(-m[1,0], m[1,1])\n",
+    "     else\n",
+    "           p = PI / 2.0\n",
+    "           y = atan2(m[1,0], m[1,1])\n",
+    "     end\n",
+    "   else\n",
+    "     p  = atan2(sp, cp)\n",
+    "     cp = cos(p)\n",
+    "     r  = atan2(m[0,1]/cp, m[0,0]/cp)\n",
+    "     y  = atan2(m[1,2]/cp, m[2,2]/cp)\n",
+    "   end\n",
+    "   [r, p, y].map{|v|v * 180 / PI}\n",
+    "end\n",
+    "\n",
+    "#回転行列 => euler 変換\n",
+    "def rmat2euler m\n",
+    "  sb = (m[0,2]**2 + m[1,2]**2 ) ** 0.5\n",
+    "  cb = m[2,2]\n",
+    "  if  sb < 0.00001 #特異解が存在\n",
+    "    a = 0.0    #基準角を0\n",
+    "    if  cb < 0.0 \n",
+    "      b = PI\n",
+    "      c = atan2(m[1,0], -m[0,0])\n",
+    "    else\n",
+    "      b = 0.0\n",
+    "      c = atan2(-m[1,0], m[0,0])\n",
+    "    end\n",
+    "  else\n",
+    "    b = atan2( sb, cb )\n",
+    "    sb = sin(b)\n",
+    "    a = atan2(m[2,1]/sb, m[2,0]/sb)\n",
+    "    c = atan2(m[1,2]/sb, -m[0,2]/sb)\n",
+    "  end\n",
+    "  [a, b, c].map{|v|v * 180.0 / PI}\n",
+    "end\n",
+    "\n",
+    "#ロールピッチヨー => euler 変換\n",
+    "#回転行列を介して変換\n",
+    "def rpy2euler r, p, y\n",
+    "  rmat2euler rpy2rmat(r, p, y)\n",
+    "end\n",
+    "\n",
+    "#euler => ロールピッチヨー 変換\n",
+    "#回転行列を介して変換\n",
+    "def euler2rpy a, b, c\n",
+    "  rmat2rpy euler2rmat(a, b, c)\n",
+    "end\n",
+    "nil"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## テスト\n",
+    "### 前準備\n",
+    "- 同じ回転状態のオイラーとロールピッチヨーのペアーを準備\n",
+    "  - ON DESKからOpenNR経由で取得(精度確保のため）\n",
+    "- testメソッドの準備\n",
+    "  - ansとoutputが全項目同じ値になっているかチェックする　\n",
+    "  - MatrixとArrayに対応\n",
+    "  "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "pair_euler = [-155.9640655517578,164.88609313964844,-101.6995849609375]\n",
+    "pair_rpy   = [125.3414306640625,-3.0307939052581787,-165.1861572265625]\n",
+    "\n",
+    "#テスト用\n",
+    "def test_data a, o\n",
+    "  accept_error =0.00001 #とりあえずべた書き\n",
+    "  case a\n",
+    "  when Array\n",
+    "    tmp = []\n",
+    "    (0...a.size).each do |i|\n",
+    "      v =  o[i] - a[i]\n",
+    "      print v.abs < accept_error ? \"OK:\" : \"NG:\" \n",
+    "      print \" (val #{i}) #{v} \\n\"\n",
+    "      tmp << v\n",
+    "    end\n",
+    "    tmp\n",
+    "  when Matrix\n",
+    "     (o - a).each.with_index do |v, i|       \n",
+    "        print v.abs < accept_error ? \"OK:\" : \"NG:\" \n",
+    "        print \" (val #{i}) #{v} \\n\"\n",
+    "     end\n",
+    "  end\n",
+    "end\n",
+    "nil"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### テスト項目\n",
+    " \n",
+    "|No.|test method|内容          |Ans|Output|\n",
+    " |:--:    |:--           |:--           |:--|:--   |\n",
+    " |1|rpy2rmat,euler2rmat|rpyとeulerのペアが同じ回転行列になる|rpy2rmat *pair_rpy|euler2rmat *pair_euler|\n",
+    " |2|rpy2rmat|rpy->回転行列->rpyで元に戻る1|[45.0,45.0,45,0]|rmat2rpy(rpy2rmat(45.0,45.0,45.0))|\n",
+    " |3|rpy2rmat|rpy->回転行列->rpyで元に戻る2|pair_rpy|rmat2rpy(rpy2rmat *pair_rpy)|\n",
+    " |4|euler2rmat|euler->回転行列->eulerで元に戻る1|[45.0,45.0,45,0]|euler2rpy(euler2rmat(45.0,45.0,45.0))|\n",
+    " |5|euler2rmat|euler->回転行列->eulerで元に戻る2|pair_euler|rmat2euler(euler2rmat *pair_euler)|\n",
+    " |6|rpy2euler|rpy->eulerで正しく変換|pair_euler|rpy2euler(*pair_rpy)|\n",
+    " |7|euler2rpy|euler->rpyで正しく変換|pair_rpy|euler2rpy(*pair_euler)|\n",
+    "\n",
+    "### テスト実行"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "################test 1##################\n",
+      "OK: (val 0) -7.86432355903699e-08 \n",
+      "OK: (val 1) -5.5266515919250025e-08 \n",
+      "OK: (val 2) -7.724967311661946e-09 \n",
+      "OK: (val 3) -3.026129302696745e-08 \n",
+      "OK: (val 4) 8.40167443394435e-08 \n",
+      "OK: (val 5) 9.510659565448165e-08 \n",
+      "OK: (val 6) 9.154549829304415e-08 \n",
+      "OK: (val 7) 2.7226354323839352e-08 \n",
+      "OK: (val 8) -2.5575909168296107e-08 \n",
+      "################test 2##################\n",
+      "OK: (val 0) -7.105427357601002e-15 \n",
+      "OK: (val 1) 0.0 \n",
+      "OK: (val 2) -7.105427357601002e-15 \n",
+      "################test 3##################\n",
+      "OK: (val 0) -1.4210854715202004e-14 \n",
+      "OK: (val 1) 4.440892098500626e-16 \n",
+      "OK: (val 2) 2.842170943040401e-14 \n",
+      "################test 4##################\n",
+      "OK: (val 0) 0.0 \n",
+      "OK: (val 1) 0.0 \n",
+      "OK: (val 2) 0.0 \n",
+      "################test 5##################\n",
+      "OK: (val 0) 2.842170943040401e-14 \n",
+      "OK: (val 1) -2.842170943040401e-14 \n",
+      "OK: (val 2) 0.0 \n",
+      "################test 6##################\n",
+      "OK: (val 0) 2.7296141524857376e-06 \n",
+      "OK: (val 1) 5.620151995344713e-06 \n",
+      "OK: (val 2) -2.575676560923057e-06 \n",
+      "################test 7##################\n",
+      "OK: (val 0) -5.514961856079026e-06 \n",
+      "OK: (val 1) -4.432279840926867e-07 \n",
+      "OK: (val 2) 5.650658010836196e-06 \n"
+     ]
+    }
+   ],
+   "source": [
+    "##test1\n",
+    "_out = rpy2rmat *pair_rpy\n",
+    "_ans = euler2rmat *pair_euler\n",
+    "print \"################test 1##################\\n\"\n",
+    "test_data _ans, _out\n",
+    "\n",
+    "##test2\n",
+    "_tmp  = [45.0]*3\n",
+    "_out = rmat2rpy rpy2rmat(*_tmp)\n",
+    "_ans = _tmp\n",
+    "print \"################test 2##################\\n\"\n",
+    "test_data _ans, _out\n",
+    "\n",
+    "##test3\n",
+    "_tmp = pair_rpy\n",
+    "_out = rmat2rpy(rpy2rmat(*_tmp))\n",
+    "_ans = _tmp\n",
+    "print \"################test 3##################\\n\"\n",
+    "test_data _ans, _out\n",
+    "\n",
+    "##test4\n",
+    "_tmp = [45.0] * 3\n",
+    "_out = rmat2euler euler2rmat(*_tmp)\n",
+    "_ans = _tmp\n",
+    "print \"################test 4##################\\n\"\n",
+    "test_data _ans, _out\n",
+    "\n",
+    "##test5\n",
+    "_tmp  = pair_euler\n",
+    "_out = rmat2euler(euler2rmat(*_tmp))\n",
+    "_ans = _tmp\n",
+    "print \"################test 5##################\\n\"\n",
+    "test_data _ans, _out\n",
+    "\n",
+    "##test6\n",
+    "_tmp  = pair_rpy\n",
+    "_out = rpy2euler *_tmp\n",
+    "_ans = pair_euler\n",
+    "print \"################test 6##################\\n\"\n",
+    "test_data _ans, _out\n",
+    "\n",
+    "##test7\n",
+    "_tmp = pair_euler\n",
+    "_out = euler2rpy *_tmp\n",
+    "_ans = pair_rpy\n",
+    "print \"################test 7##################\\n\"\n",
+    "test_data _ans, _out\n",
+    "\n",
+    "nil"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### テスト結果\n",
+    " <u>全部OK</u>\n",
+    " \n",
+    " - 回転行列の誤差　大体　$10^{-8}$オーダー\n",
+    " - 回転行列を介した角度の誤差　大体　$10^{-6}$オーダー　←　角度はdegree\n",
+    " \n",
+    "------------------\n",
+    " \n",
+    " \n",
+    "# 任意のベクトルを中心とした回転行列\n",
+    "\n",
+    "- http://www.cg.info.hiroshima-cu.ac.jp/~miyazaki/knowledge/tech07.html\n",
+    "を丸コピー\n",
+    "\n",
+    "- ベクトルの正規化もする\n",
+    "## 実装"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "require 'matrix'\n",
+    "include Math\n",
+    "\n",
+    "#3Dベクトルでt回転　|n|=1\n",
+    "def vec_rote2rmat(r,nv)\n",
+    "  #正規化\n",
+    "  nv /= nv.norm\n",
+    "  \n",
+    "  nx,ny,nz =  *(nv.to_a) \n",
+    "  ct = cos(r * PI / 180.0)\n",
+    "  st = sin(r * PI / 180.0)\n",
+    "  ct2 = (1-ct)\n",
+    "\n",
+    "  Matrix[[nx*nx*ct2 +    ct, nx*ny*ct2 - nz*st, nz*nx* ct2 + ny*st],\n",
+    "         [nx*ny*ct2 + nz*st, ny*ny*ct2 +    ct, ny*nz* ct2 - nx*st],\n",
+    "         [nx*nz*ct2 - ny*st, nz*ny*ct2 + nx*st, nz*nz* ct2 +    ct]]\n",
+    "end\n",
+    "nil"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "OK: (val 0) 0.0 \n",
+      "OK: (val 1) 0.0 \n",
+      "OK: (val 2) 0.0 \n",
+      "OK: (val 3) 0.0 \n",
+      "OK: (val 4) 0.0 \n",
+      "OK: (val 5) 0.0 \n",
+      "OK: (val 6) 0.0 \n",
+      "OK: (val 7) 0.0 \n",
+      "OK: (val 8) 0.0 \n"
+     ]
+    },
+    {
+     "data": {
+      "text/latex": [
+       "$$\\left(\\begin{array}{ccc}\n",
+       "  0.0&0.0&0.0\\\\\n",
+       "  0.0&0.0&0.0\\\\\n",
+       "  0.0&0.0&0.0\\\\\n",
+       "\\end{array}\\right)$$"
+      ],
+      "text/plain": [
+       "Matrix[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "_x = Vector[-1,0,0]\n",
+    "_y = Vector[0,-1,0]\n",
+    "_z = Vector[0,0,-1]\n",
+    "_tmp =  pair_rpy\n",
+    "_out =  vec_rote2rmat(_tmp[2], _x)\n",
+    "_out *= vec_rote2rmat(_tmp[1], _y)\n",
+    "_out *= vec_rote2rmat(_tmp[0], _z)\n",
+    "_ans =  rpy2rmat *_tmp\n",
+    "\n",
+    "test_data _ans, _out"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "OK: (val 0) 0.0 \n",
+      "OK: (val 1) 0.0 \n",
+      "OK: (val 2) 0.0 \n",
+      "OK: (val 3) 0.0 \n",
+      "OK: (val 4) 0.0 \n",
+      "OK: (val 5) 0.0 \n",
+      "OK: (val 6) 0.0 \n",
+      "OK: (val 7) 0.0 \n",
+      "OK: (val 8) 0.0 \n"
+     ]
+    },
+    {
+     "data": {
+      "text/latex": [
+       "$$\\left(\\begin{array}{ccc}\n",
+       "  0.0&0.0&0.0\\\\\n",
+       "  0.0&0.0&0.0\\\\\n",
+       "  0.0&0.0&0.0\\\\\n",
+       "\\end{array}\\right)$$"
+      ],
+      "text/plain": [
+       "Matrix[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]"
+      ]
+     },
+     "execution_count": 10,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "_y = Vector[0,-1,0]\n",
+    "_z = Vector[0,0,-1]\n",
+    "_tmp = pair_euler\n",
+    "_out =  vec_rote2rmat(_tmp[2], _z)\n",
+    "_out *= vec_rote2rmat(_tmp[1], _y)\n",
+    "_out *= vec_rote2rmat(_tmp[0], _z)\n",
+    "_ans = euler2rmat *_tmp\n",
+    "\n",
+    "test_data _ans, _out"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "%who"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Ruby 2.3.3",
+   "language": "ruby",
+   "name": "ruby"
+  },
+  "language_info": {
+   "file_extension": ".rb",
+   "mimetype": "application/x-ruby",
+   "name": "ruby",
+   "version": "2.3.3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
